@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsumugi-chords"
+version = "0.1.0"
+description = "Detailed chords of whole songs (root, 62 qualities with tensions, bass) from a note-transcription backbone"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "anime-song" }]
+keywords = ["music transcription", "chord recognition", "chord estimation", "slash chords", "tension chords"]
+dependencies = [
+    "torch>=2.8",
+    "torchaudio>=2.8",
+    "numpy",
+    "scipy",
+    "numba>=0.60",
+    "mir_eval>=0.7",
+    "safetensors>=0.4",
+    "soundfile>=0.12",
+    "huggingface_hub[hf_xet]>=0.30",
+    "sheetsage2-refined @ git+https://github.com/anime-song/SheetSage2-Refined",
+]
+
+[project.urls]
+"Model" = "https://huggingface.co/anime-song/Tsumugi-Chords"
+"Source" = "https://github.com/anime-song/Tsumugi-Chords"
+
+[project.scripts]
+tsumugi-chords = "tsumugi_chords.__main__:main"
+
+[tool.setuptools]
+packages = ["tsumugi_chords"]
