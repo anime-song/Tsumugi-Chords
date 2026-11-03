@@ -49,8 +49,21 @@ def chord_symbol(root: int | None, quality: str | None, bass: int | None, key: s
 
     if root is None:
         return "N"
-    symbol = spell(root, key, raised=quality.startswith("dim")) + quality
-    return symbol + "/" + spell(bass, key) if bass is not None and bass != root else symbol
+    name = spell(root, key, raised=quality.startswith("dim"))
+    symbol = name + quality
+    if bass is None or bass == root:
+        return symbol
+    # the bass by its interval above the root (B7/D#, C/Bb), else as the key spells it
+    interval = (bass - root) % 12
+    step = DEGREE_STEP[interval]
+    if interval == 6 and ("-5" in quality or quality.startswith("dim")):
+        step = 4  # b5
+    elif interval == 8 and "aug" in quality:
+        step = 4  # #5
+    letter = LETTERS[(LETTERS.index(name[0]) + step) % 7]
+    shift = (bass - NATURAL[LETTERS.index(letter)] + 6) % 12 - 6
+    low = letter + {1: "#", -1: "b"}.get(shift, "") if shift in (-1, 0, 1) else None
+    return symbol + "/" + (low if low and low not in ("Cb", "Fb", "E#", "B#") else spell(bass, key))
 
 
 def bigram(path: Path) -> np.ndarray:
