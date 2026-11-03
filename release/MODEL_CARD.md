@@ -29,6 +29,7 @@ loads as a dependency.
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
 pip install git+https://github.com/anime-song/Tsumugi-Chords
 tsumugi-chords song.mp3                 # -> outputs/chords/song.chords.lab and song.chords.json
+tsumugi-chords song.mp3 --notation symbol   # .lab with chord symbols (Am7/G) instead of Harte (A:min7/b7)
 ```
 
 The first run downloads this model (68 MB) and the parts of SheetSage2-Refined the beats and keys need
@@ -40,7 +41,7 @@ from tsumugi_chords import HeadChords
 tracker = HeadChords.load()            # device: CUDA if there is one
 result = tracker.transcribe("song.mp3")
 for chord in result["chords"]:
-    print(f"{chord.start:7.2f} {chord.end:7.2f} {chord.label}")   # e.g. "  12.48   13.71 A:min7/b7"
+    print(f"{chord.start:7.2f} {chord.end:7.2f} {chord.label} {chord.symbol}")   # e.g. "  12.48   13.71 A:min7/b7 Am7/G"
 # result["beats"], result["downbeats"], result["keys"]: what the chord model read
 ```
 
@@ -120,11 +121,16 @@ chords with 9ths, 11ths, 13ths or added notes (SheetSage2's vocabulary cannot wr
 
 `tsumugi-chords` writes two files per song:
 
-- `<song>.chords.lab`: one chord per line, `start<TAB>end<TAB>label` (seconds; labels in Harte syntax as in
-  `mir_eval`, e.g. `D:maj7`, `B:maj/3`, `E:min7(9)`, `G:7(b9)`, `N` for no chord).
+- `<song>.chords.lab`: one chord per line, `start<TAB>end<TAB>label` (seconds).  By default the labels are in Harte
+  syntax as in `mir_eval`, e.g. `D:maj7`, `B:maj/3`, `E:min7(9)`, `G:7(b9)`, `N` for no chord; with
+  `--notation symbol` they are chord symbols as in lead sheets: `DM7`, `B/D#`, `Em7(9)`, `G7(b9)`.
 - `<song>.chords.json`: `{"audio", "duration", "beats", "downbeats", "keys", "chords"}`; each chord is
-  `{"start", "end", "label", "root", "quality", "bass"}` (root and bass as pitch classes, C = 0; `null` for no chord
-  or no separate bass).
+  `{"start", "end", "label", "root", "quality", "bass", "symbol"}` (root and bass as pitch classes, C = 0; `null` for
+  no chord or no separate bass).
+
+The chord symbols are spelt in the key the chord sits in: sharps or flats by its key signature, other notes by their
+degree (Bb7 in C major, E7/G# in A minor, A#dim7 before Bm in D major).  Qualities are written `M7`, `m7`, `m7-5`,
+`7-5`, `dim7`, `aug`, `sus4`, `add9`, `69`, tensions in parentheses (`7(9,13)`).
 
 ## Limitations
 

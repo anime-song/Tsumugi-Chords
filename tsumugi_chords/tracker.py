@@ -83,5 +83,7 @@ class HeadChords:
         return {"audio": str(audio)} | info | {"chords": chords}
 
 
-def to_lab(chords: list[Chord]) -> str:
-    return "".join(f"{c.start:.3f}\t{c.end:.3f}\t{c.label}\n" for c in chords)
+def to_lab(chords: list[Chord], notation: str = "harte") -> str:
+    """``start<TAB>end<TAB>label`` lines; ``notation`` "harte" (mir_eval, ``A:min7/b7``) or "symbol" (``Am7/G``)."""
+
+    return "".join(f"{c.start:.3f}\t{c.end:.3f}\t{c.symbol if notation == 'symbol' else c.label}\n" for c in chords)

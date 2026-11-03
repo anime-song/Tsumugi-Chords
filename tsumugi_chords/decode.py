@@ -1,6 +1,6 @@
 """Chord segments from the model's 25 Hz probabilities: the semi-Markov decoder (``semi_crf.decode``) over the beat
 grid, with chord-length and beat-position tables and a key-relative chord bigram counted on the training labels, then
-one quality per segment (``chords.segments``) written as mir_eval labels."""
+one quality per segment (``chords.segments``) written as mir_eval labels and as chord symbols (``Am7/G``)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,12 +9,48 @@ from pathlib import Path
 import numpy as np
 
 from . import semi_crf as semi
-from .chord_crf import NS, key_frames
+from .chord_crf import NS, PARENT, SHARP, key_frames
 from .chords import segments
 from .heads import FRAME_RATE
 from .theory import QUALITIES, chord_to_mir_eval
 
 NO_CHORD = 12 * len(QUALITIES)
+FLAT = ("C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B")
+LETTERS = "CDEFGAB"
+NATURAL = (0, 2, 4, 5, 7, 9, 11)
+# Letter steps of the 12 degrees above the tonic: 1, b2, 2, b3, 3, 4, #4, 5, b6, 6, b7, 7
+DEGREE_STEP = (0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6)
+
+
+def spell(pc: int, key: str | None = None, raised: bool = False) -> str:
+    """The name of pitch class ``pc`` in ``key`` (e.g. ``"A:minor"``): the key's tonic spelt by its key signature
+    (flats when its parent major is F, Bb, Eb, Ab or Db), the other notes by their degree above it (b3, #4, b7 ...),
+    so G# is the leading tone of A minor and Bb the flat seventh of C major; with ``raised`` a note outside the key
+    is spelt as a raised degree instead (#1, #2, #5, #6: the root of a diminished chord leads up, A#dim7 -> Bm in
+    D major).  Cb, Fb, E# and B# are written B, E, F and C.  No key: C major's spelling."""
+
+    tonic, _, mode = (key or "C:major").partition(":")
+    if tonic not in SHARP and tonic not in FLAT:
+        tonic, mode = "C", "major"
+    t = SHARP.index(tonic) if tonic in SHARP else FLAT.index(tonic)
+    names = FLAT if (t + PARENT.get(mode, 0)) % 12 in (1, 3, 5, 8, 10) else SHARP
+    parent, degree = (t + PARENT.get(mode, 0)) % 12, (pc - t) % 12
+    step = DEGREE_STEP[degree]
+    if raised and (pc - parent) % 12 not in NATURAL and degree in (1, 3, 8, 10):
+        step -= 1
+    letter = LETTERS[(LETTERS.index(names[t][0]) + step) % 7]
+    shift = (pc - NATURAL[LETTERS.index(letter)] + 6) % 12 - 6
+    name = letter + {0: "", 1: "#", -1: "b"}[shift] if shift in (-1, 0, 1) else names[pc]
+    return names[pc] if name in ("Cb", "Fb", "E#", "B#") else name  # as lead sheets write them
+
+
+def chord_symbol(root: int | None, quality: str | None, bass: int | None, key: str | None = None) -> str:
+    """A chord symbol as in lead sheets, e.g. ``Am7/G``, ``FM7``, ``G7(b9)``, ``Bm7-5``; ``N`` for no chord."""
+
+    if root is None:
+        return "N"
+    symbol = spell(root, key, raised=quality.startswith("dim")) + quality
+    return symbol + "/" + spell(bass, key) if bass is not None and bass != root else symbol
 
 
 def bigram(path: Path) -> np.ndarray:
@@ -38,6 +74,7 @@ class Chord:
     root: int | None  # pitch class 0..11 (C = 0)
     quality: str | None
     bass: int | None
+    symbol: str = "N"  # chord symbol spelt in the chord's key, e.g. "Am7/G"
 
 
 class ChordDecoder:
@@ -63,5 +100,7 @@ class ChordDecoder:
             else:
                 root, quality = seg.detail % 12, QUALITIES[seg.detail // 12]
                 bass_pc = seg.bass if seg.bass < 12 else None
-                out.append(Chord(start, end, chord_to_mir_eval(root, quality, bass_pc), root, quality, bass_pc))
+                key = next((k["key"] for k in keys if k["start"] <= (start + end) / 2 < k["end"]), keys[-1]["key"] if keys else None)
+                out.append(Chord(start, end, chord_to_mir_eval(root, quality, bass_pc), root, quality, bass_pc,
+                                 chord_symbol(root, quality, bass_pc, key)))  # fmt: skip
         return out

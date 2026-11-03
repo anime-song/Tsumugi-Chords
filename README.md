@@ -43,6 +43,7 @@ This installs SheetSage2-Refined too.  The weights are downloaded from Hugging F
 
 ```bash
 tsumugi-chords song.mp3                       # -> outputs/chords/song.chords.lab and song.chords.json
+tsumugi-chords song.mp3 --notation symbol     # chord symbols (Am7/G) in the .lab instead of Harte (A:min7/b7)
 tsumugi-chords *.mp3 --out-dir chords --device cpu
 ```
 
@@ -52,13 +53,14 @@ from tsumugi_chords import HeadChords
 tracker = HeadChords.load()
 result = tracker.transcribe("song.mp3")
 for chord in result["chords"]:
-    print(chord.start, chord.end, chord.label)    # e.g. 12.48 13.71 A:min7/b7
+    print(chord.start, chord.end, chord.label, chord.symbol)    # e.g. 12.48 13.71 A:min7/b7 Am7/G
 ```
 
 `result` also holds the `beats`, `downbeats` and `keys` the chord model read.  To use beats and keys of your own,
 pass them: `tracker.transcribe("song.mp3", {"beats": [...], "downbeats": [...], "keys": [{"start", "end", "key"}]})`.
 
-Options: `--model` (a Hugging Face repo id or a local model folder), `--revision`, `--keys-model` (another
+Each chord has its Harte label (`mir_eval`) and a chord symbol spelt in its key (`symbol`).  Options:
+`--notation` (`harte` or `symbol` for the .lab file), `--model` (a Hugging Face repo id or a local model folder), `--revision`, `--keys-model` (another
 SheetSage2-Refined folder or repo), `--device`, `--memory-fraction` (the share of GPU memory the process may use).
 
 ## License
