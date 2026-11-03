@@ -29,7 +29,7 @@ loads as a dependency.
 pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
 pip install git+https://github.com/anime-song/Tsumugi-Chords
 tsumugi-chords song.mp3                 # -> outputs/chords/song.chords.lab and song.chords.json
-tsumugi-chords song.mp3 --notation symbol   # .lab with chord symbols (Am7/G) instead of Harte (A:min7/b7)
+tsumugi-chords song.mp3 --notation harte    # .lab with Harte labels (A:min7/b7, for mir_eval) instead of Am7/G
 ```
 
 The first run downloads this model (68 MB) and the parts of SheetSage2-Refined the beats and keys need
@@ -121,9 +121,9 @@ chords with 9ths, 11ths, 13ths or added notes (SheetSage2's vocabulary cannot wr
 
 `tsumugi-chords` writes two files per song:
 
-- `<song>.chords.lab`: one chord per line, `start<TAB>end<TAB>label` (seconds).  By default the labels are in Harte
-  syntax as in `mir_eval`, e.g. `D:maj7`, `B:maj/3`, `E:min7(9)`, `G:7(b9)`, `N` for no chord; with
-  `--notation symbol` they are chord symbols as in lead sheets: `DM7`, `B/D#`, `Em7(9)`, `G7(b9)`.
+- `<song>.chords.lab`: one chord per line, `start<TAB>end<TAB>label` (seconds).  By default the labels are chord symbols
+  as in lead sheets, e.g. `DM7`, `B/D#`, `Em7(9)`, `G7(b9)`, `N` for no chord; with `--notation harte` they are in
+  Harte syntax as in `mir_eval`: `D:maj7`, `B:maj/3`, `E:min7(9)`, `G:7(b9)`.
 - `<song>.chords.json`: `{"audio", "duration", "beats", "downbeats", "keys", "chords"}`; each chord is
   `{"start", "end", "label", "root", "quality", "bass", "symbol"}` (root and bass as pitch classes, C = 0; `null` for
   no chord or no separate bass).

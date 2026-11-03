@@ -1,5 +1,5 @@
 """Chords of audio files: python -m tsumugi_chords AUDIO [AUDIO ...] -> OUT_DIR/<stem>.chords.lab (start, end,
-label: mir_eval's Harte syntax such as A:min7/b7, or with --notation symbol chord symbols such as Am7/G) and
+label: chord symbols such as Am7/G, or with --notation harte mir_eval's Harte syntax such as A:min7/b7) and
 <stem>.chords.json (the chords with both labels, root / quality / bass, plus the beats, downbeats and keys used)."""
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ def main() -> None:
     parser.add_argument("--keys-model", help="SheetSage2-Refined model for the beats and keys (default: the one config.json names)")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--out-dir", type=Path, default=Path("outputs") / "chords")
-    parser.add_argument("--notation", choices=("harte", "symbol"), default="harte",
-                        help="labels of the .lab file: harte (mir_eval, A:min7/b7) or symbol (Am7/G)")
+    parser.add_argument("--notation", choices=("harte", "symbol"), default="symbol",
+                        help="labels of the .lab file: symbol (Am7/G) or harte (mir_eval, A:min7/b7)")
     parser.add_argument("--memory-fraction", type=float, default=0.6, help="cap on this process's share of GPU memory")
     args = parser.parse_args()
     if args.device.startswith("cuda"):

@@ -43,7 +43,7 @@ This installs SheetSage2-Refined too.  The weights are downloaded from Hugging F
 
 ```bash
 tsumugi-chords song.mp3                       # -> outputs/chords/song.chords.lab and song.chords.json
-tsumugi-chords song.mp3 --notation symbol     # chord symbols (Am7/G) in the .lab instead of Harte (A:min7/b7)
+tsumugi-chords song.mp3 --notation harte      # Harte labels (A:min7/b7, for mir_eval) in the .lab instead of Am7/G
 tsumugi-chords *.mp3 --out-dir chords --device cpu
 ```
 
@@ -60,7 +60,7 @@ for chord in result["chords"]:
 pass them: `tracker.transcribe("song.mp3", {"beats": [...], "downbeats": [...], "keys": [{"start", "end", "key"}]})`.
 
 Each chord has its Harte label (`mir_eval`) and a chord symbol spelt in its key (`symbol`).  Options:
-`--notation` (`harte` or `symbol` for the .lab file), `--model` (a Hugging Face repo id or a local model folder), `--revision`, `--keys-model` (another
+`--notation` (`symbol`, the default, or `harte` for the .lab file), `--model` (a Hugging Face repo id or a local model folder), `--revision`, `--keys-model` (another
 SheetSage2-Refined folder or repo), `--device`, `--memory-fraction` (the share of GPU memory the process may use).
 
 ## License
