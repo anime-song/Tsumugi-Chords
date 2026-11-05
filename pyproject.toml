@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tsumugi-chords"
-version = "0.1.1"
+version = "0.2.0"
 description = "Detailed chords of whole songs (root, 62 qualities with tensions, bass) from a note-transcription backbone"
 readme = "README.md"
 requires-python = ">=3.10"

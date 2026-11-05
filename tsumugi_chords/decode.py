@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import repeat
 from . import semi_crf as semi
 from .chord_crf import NS, PARENT, SHARP, beat_position, key_frames
 from .chords import merge_fifth_bass, merge_short_slash, merge_similar, segments
@@ -102,6 +103,9 @@ class ChordDecoder:
         downbeats (seconds) and keys (``{"start", "end", "key"}``) the model read."""
 
         detail = detail.astype(np.float32)
+        if self.params.repeat_beta and len(downbeats):
+            detail = repeat.smooth(detail, bass.astype(np.float32), downbeats, self.params.repeat_beta, self.params.repeat_context,
+                                   self.params.repeat_local)  # fmt: skip
         tonic = key_frames(keys, len(detail))
         cp, bp = semi.decode(detail, bass.astype(np.float32), boundary.astype(np.float32), tonic, np.asarray(beats, np.float64),
                              np.asarray(downbeats, np.float64), self.params, self.tables, self.lm)  # fmt: skip

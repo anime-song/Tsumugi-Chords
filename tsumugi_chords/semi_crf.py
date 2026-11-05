@@ -78,6 +78,9 @@ class Params:
     symmetric: bool = True  # aug / dim7: the roots that spell one set of notes share their summed probability
     merge_fifth_bass: bool | str = False  # (after the search, chords.merge_fifth_bass) root <-> fifth bass moves: one chord
     short_slash: float = 1.25  # (after the search, chords.merge_short_slash) an opening bass shorter than this many beats
+    repeat_beta: float = 0.5  # (before the search, repeat.smooth) how much a bar hears the bars that repeat it; 0: off
+    repeat_context: float = 0.9  # ... the similarity the bars around the two must reach
+    repeat_local: float = 0.75  # ... and the two bars themselves
     merge_similar: bool = True  # (after the search, chords.merge_similar) one sound split between two readings: joined
     boundary_weight: float = 1.0
     lam: float = 0.0

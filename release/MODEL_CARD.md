@@ -67,8 +67,15 @@ on an Intel Core i5-12400F (6 threads; beats and keys 65 s, chords 84 s, decodin
 3. **The decoder**: a semi-Markov Viterbi over the beat grid that chooses chord segments from the frame
    probabilities, the boundary peaks, chord-length and beat-position tables, and a key-relative chord bigram
    (counted on the training labels and on Tsumugi's chords).  Chords may change on the beats' halves, thirds and
-   quarters; a bass-only change to a note outside the held chord costs extra (passing bass notes).  Each segment
-   gets one root × quality and one bass.
+   quarters; a bass-only change to a note outside the held chord costs extra (passing bass notes), and every segment
+   pays the labels' log-probability of its bass's interval above the root for its chord family.  Each segment gets
+   one root × quality and one bass.
+   - *Repeated bars*: before the search each bar's root × quality probabilities are mixed with those of the bars that
+     repeat it (bars matched by the chord tones and bass the model hears, under the transposition the bars around
+     them agree on, so a chorus a step up still counts), which keeps repeated passages consistent.
+   - *After the search*: aug and dim7 chords are spelt from the root their frames favour (their roots share one
+     probability), a sound split between two readings over the same bass (Baug/F, F7(9,#11,13)) is joined, and an
+     opening bass shorter than 1.25 beats before the root (DM7(9)/F# for a beat, then DM7(9)) is dropped.
 
 ### Training
 
@@ -99,22 +106,22 @@ chords with 9ths, 11ths, 13ths or added notes (SheetSage2's vocabulary cannot wr
 <!-- tables:chords -->
 | Chords | SheetSage2 | SheetSage2-Refined | Tsumugi-Chords |
 |---|---|---|---|
-| root, test | 0.821 | 0.864 | **0.899** |
-| root, valid | 0.822 | 0.880 | **0.885** |
-| majmin, test | 0.871 | 0.886 | **0.917** |
-| majmin, valid | 0.845 | 0.885 | **0.897** |
-| sevenths, test | 0.762 | 0.829 | **0.862** |
-| sevenths, valid | 0.777 | 0.825 | **0.861** |
-| tetrads, test | 0.678 | 0.770 | **0.818** |
-| tetrads, valid | 0.704 | 0.780 | **0.813** |
-| notes (tensions included), test | 0.586 | 0.689 | **0.737** |
-| notes (tensions included), valid | 0.636 | 0.727 | **0.762** |
-| slash chords (bass, exact), test | 0.366 | 0.520 | **0.641** |
-| slash chords (bass, exact), valid | 0.386 | 0.515 | **0.606** |
-| tension chords, test: recall / precision | 0.000 / — | 0.232 / **0.485** | **0.550** / 0.410 |
-| tension chords, valid: recall / precision | 0.000 / — | 0.221 / **0.606** | **0.526** / 0.503 |
-| segmentation, test | 0.914 | 0.928 | **0.949** |
-| segmentation, valid | 0.877 | **0.909** | 0.908 |
+| root, test | 0.821 | 0.864 | **0.901** |
+| root, valid | 0.822 | 0.880 | **0.889** |
+| majmin, test | 0.871 | 0.886 | **0.918** |
+| majmin, valid | 0.845 | 0.885 | **0.904** |
+| sevenths, test | 0.762 | 0.829 | **0.867** |
+| sevenths, valid | 0.777 | 0.825 | **0.872** |
+| tetrads, test | 0.678 | 0.770 | **0.822** |
+| tetrads, valid | 0.704 | 0.780 | **0.823** |
+| notes (tensions included), test | 0.586 | 0.689 | **0.745** |
+| notes (tensions included), valid | 0.636 | 0.727 | **0.774** |
+| slash chords (bass, exact), test | 0.366 | 0.520 | **0.635** |
+| slash chords (bass, exact), valid | 0.386 | 0.515 | **0.609** |
+| tension chords, test: recall / precision | 0.000 / — | 0.232 / **0.485** | **0.545** / 0.441 |
+| tension chords, valid: recall / precision | 0.000 / — | 0.221 / **0.606** | **0.531** / 0.522 |
+| segmentation, test | 0.914 | 0.928 | **0.948** |
+| segmentation, valid | 0.877 | 0.909 | **0.921** |
 <!-- /tables:chords -->
 
 ## Output
@@ -137,7 +144,7 @@ degree (Bb7 in C major, E7/G# in A minor, A#dim7 before Bm in D major).  Qualiti
 - Long chords are sometimes split: about one in six annotated chords of 6 beats or more in the valid songs is broken
   up (by half a beat or more), mostly by a chord with another root.  Many of these are pedal or vamp passages where the
   annotation writes one long chord over a moving bass line or riff, so part of this is a labelling convention.
-- Written tension chords are right about half the time (precision 0.41 / 0.50 on test / valid).
+- Written tension chords are right about half the time (precision 0.44 / 0.52 on test / valid).
 - Chord changes are placed on the tracked beat grid, so an error of the beat tracker (e.g. half tempo, odd meters)
   also moves the chords.
 - The training songs are mostly Japanese pop and anime songs; other styles were not measured.
@@ -161,7 +168,7 @@ and [MERT-v2-FullSong](https://huggingface.co/m-a-p/MERT-v2-FullSong) by the Mul
 SheetSage2 の重みは使わず、音符の採譜で学習したバックボーン（16.9 M パラメータ、ゼロから学習）にコード読み取り部を
 載せ、拍の上で半マルコフ型の Viterbi でコードを決めます。拍・小節線・キーは SheetSage2-Refined の
 デコーダーなしのトラッカーから受け取るため、SheetSage2-Refined に依存しています。
-テストの曲（95 曲）で tetrads 0.818、分数コード 0.641 です（SheetSage2-Refined は 0.770 / 0.520）。
+テストの曲（95 曲）で tetrads 0.822、分数コード 0.635 です（SheetSage2-Refined は 0.770 / 0.520）。
 ただし、学習で出力をまねた Tsumugi のコードモデルはテスト曲を含むデータで学習しているので、この数字は
 やや楽観的な可能性があります。
 重みは CC BY-NC 4.0（非商用のみ）、推論コードは MIT です。

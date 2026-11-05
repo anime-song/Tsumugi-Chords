@@ -18,11 +18,11 @@ Held-out songs (mostly Japanese pop and anime songs, hand-annotated), `mir_eval`
 <!-- tables:summary -->
 | Test songs (95) | SheetSage2 | SheetSage2-Refined | Tsumugi-Chords |
 |---|---|---|---|
-| root | 0.821 | 0.864 | **0.899** |
-| tetrads | 0.678 | 0.770 | **0.818** |
-| notes (tensions included) | 0.586 | 0.689 | **0.737** |
-| slash chords (bass, exact) | 0.366 | 0.520 | **0.641** |
-| tension chords: recall / precision | 0.000 / — | 0.232 / **0.485** | **0.550** / 0.410 |
+| root | 0.821 | 0.864 | **0.901** |
+| tetrads | 0.678 | 0.770 | **0.822** |
+| notes (tensions included) | 0.586 | 0.689 | **0.745** |
+| slash chords (bass, exact) | 0.366 | 0.520 | **0.635** |
+| tension chords: recall / precision | 0.000 / — | 0.232 / **0.485** | **0.545** / 0.441 |
 <!-- /tables:summary -->
 
 The chord model that Tsumugi-Chords partly learnt from was trained on data that includes these test songs; see the
