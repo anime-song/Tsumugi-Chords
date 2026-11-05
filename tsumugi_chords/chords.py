@@ -247,3 +247,20 @@ def merge_fifth_bass(segs: list[Segment], keep: str = "first") -> list[Segment]:
                 continue
         out.append(seg)
     return out
+
+
+def merge_short_slash(segs: list[Segment], beat_of, max_beats: float) -> list[Segment]:
+    """A chord that opens with another bass for less than ``max_beats`` beats and then moves to its root (DM7(9)/F# for
+    a beat -> DM7(9)) read as the root-position chord throughout: the labels next to never open a chord so (20 of 101k
+    chords for up to 1.25 beats; from 1.25 beats on it is common, B/F# -> B over a bar).  ``beat_of``: frame -> beat."""
+
+    out: list[Segment] = []
+    for i, seg in enumerate(segs):
+        prev = out[-1] if out else None
+        opening = prev is not None and (len(out) == 1 or out[-2].detail != prev.detail)
+        if (opening and prev.detail == seg.detail < NO_CHORD and prev.bass != seg.bass == seg.detail % 12
+                and prev.bass != prev.detail % 12 and beat_of(prev.end) - beat_of(prev.start) < max_beats):  # fmt: skip
+            out[-1] = replace(seg, start=prev.start)
+            continue
+        out.append(seg)
+    return out

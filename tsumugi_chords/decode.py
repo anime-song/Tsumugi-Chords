@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 
 from . import semi_crf as semi
-from .chord_crf import NS, PARENT, SHARP, key_frames
-from .chords import merge_fifth_bass, merge_similar, segments
+from .chord_crf import NS, PARENT, SHARP, beat_position, key_frames
+from .chords import merge_fifth_bass, merge_short_slash, merge_similar, segments
 from .heads import FRAME_RATE
 from .theory import QUALITIES, chord_to_mir_eval
 
@@ -108,6 +108,9 @@ class ChordDecoder:
         segs = segments(detail, cp, bp, self.params.symmetric)
         if self.params.merge_fifth_bass:
             segs = merge_fifth_bass(segs, self.params.merge_fifth_bass if isinstance(self.params.merge_fifth_bass, str) else "first")
+        if self.params.short_slash:
+            grid = np.asarray(beats, np.float64)
+            segs = merge_short_slash(segs, lambda f: float(beat_position(grid, np.array([f / FRAME_RATE]))[0]), self.params.short_slash)
         if self.params.merge_similar:
             segs = merge_similar(segs, detail, self.params.symmetric)
         out = []
