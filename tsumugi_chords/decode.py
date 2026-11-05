@@ -10,7 +10,7 @@ import numpy as np
 
 from . import semi_crf as semi
 from .chord_crf import NS, PARENT, SHARP, key_frames
-from .chords import segments
+from .chords import merge_fifth_bass, merge_similar, segments
 from .heads import FRAME_RATE
 from .theory import QUALITIES, chord_to_mir_eval
 
@@ -105,8 +105,13 @@ class ChordDecoder:
         tonic = key_frames(keys, len(detail))
         cp, bp = semi.decode(detail, bass.astype(np.float32), boundary.astype(np.float32), tonic, np.asarray(beats, np.float64),
                              np.asarray(downbeats, np.float64), self.params, self.tables, self.lm)  # fmt: skip
+        segs = segments(detail, cp, bp, self.params.symmetric)
+        if self.params.merge_fifth_bass:
+            segs = merge_fifth_bass(segs, self.params.merge_fifth_bass if isinstance(self.params.merge_fifth_bass, str) else "first")
+        if self.params.merge_similar:
+            segs = merge_similar(segs, detail, self.params.symmetric)
         out = []
-        for seg in segments(detail, cp, bp):
+        for seg in segs:
             start, end = seg.start / FRAME_RATE, seg.end / FRAME_RATE
             if seg.detail >= NO_CHORD:
                 out.append(Chord(start, end, "N", None, None, None))

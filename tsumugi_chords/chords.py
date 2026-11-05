@@ -29,7 +29,7 @@ so a reading can be left at the triad or the family where the frames do not deci
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -69,6 +69,28 @@ def family_probs(detail: np.ndarray) -> np.ndarray:
     """``[T, 12 * families + 1]`` probabilities of root x family from ``[T, 745]`` root x quality ones."""
 
     return detail.astype(np.float32) @ one_hot(detail_groups("family"))
+
+
+# Chords whose notes are the same from several roots: aug (Caug = Eaug = G#aug) and dim7 (Cdim7 = D#dim7 = F#dim7 = Adim7).
+SYMMETRIC = {FAMILIES.index("aug"): 4, FAMILIES.index("dim7"): 3}  # family -> the root step that keeps its notes
+
+
+def equivalent_roots(family: int, root: int) -> list[int]:
+    """The roots that spell the same notes as ``root`` in ``family`` (just ``root`` for a chord that is not symmetric)."""
+
+    step = SYMMETRIC.get(family)
+    return [root] if step is None else [(root + k * step) % 12 for k in range(12 // step)]
+
+
+def merge_symmetric(family: np.ndarray) -> np.ndarray:
+    """``[T, 12 * families + 1]`` root x family probabilities with each symmetric chord's roots summed: every spelling of
+    one set of notes gets their total, so the frames cannot switch between spellings (Baug -> D#aug) of one sound."""
+
+    out = family.copy()
+    for fam, step in SYMMETRIC.items():
+        cols = family[:, 12 * fam : 12 * fam + 12]
+        out[:, 12 * fam : 12 * fam + 12] = sum(np.roll(cols, k * step, axis=1) for k in range(12 // step))
+    return out
 
 
 def one_hot(groups: np.ndarray) -> np.ndarray:
@@ -148,9 +170,9 @@ class Segment:
     quality_share: float  # mean share of the quality within its family
 
 
-def segments(detail: np.ndarray, chord_path: np.ndarray, bass_path: np.ndarray) -> list[Segment]:
+def segments(detail: np.ndarray, chord_path: np.ndarray, bass_path: np.ndarray, symmetric: bool = False) -> list[Segment]:
     """The runs of ``joint_path``'s path, each with one quality (``detail`` ``[T, 745]``: root x quality
-    probabilities)."""
+    probabilities); with ``symmetric`` an aug or dim7 run is spelt from the root its frames favour (``SYMMETRIC``)."""
 
     detail = detail.astype(np.float32)
     family = family_probs(detail)
@@ -165,10 +187,63 @@ def segments(detail: np.ndarray, chord_path: np.ndarray, bass_path: np.ndarray) 
             out.append(Segment(int(a), int(b), NO_CHORD, 12, 1.0, 1.0))
             continue
         root, fam = c % 12, c // 12
+        roots = equivalent_roots(fam, root) if symmetric else [root]
+        if len(roots) > 1:  # a symmetric chord: the spelling the frames give the most probability over the segment
+            root = roots[int(family[a:b, [12 * fam + r for r in roots]].sum(0).argmax())]
+            c = 12 * fam + root
         members = np.flatnonzero(QUALITY_FAMILY == fam)
         fam_p = np.clip(family[a:b, c], 1e-9, None)
         shares = (detail[a:b][:, 12 * members + root] / fam_p[:, None]).mean(0)
         best = int(shares.argmax())
         family_share = float((fam_p / np.clip(triad[a:b, triad_groups[c]], 1e-9, None)).mean())
         out.append(Segment(int(a), int(b), int(12 * members[best] + root), int(bass_path[a]), family_share, float(shares[best])))
+    return out
+
+
+def merge_similar(segs: list[Segment], detail: np.ndarray, symmetric: bool = False) -> list[Segment]:
+    """Neighbouring segments over the same bass whose notes (tensions and bass included) are a subset of one another
+    but whose roots differ (Baug/F -> F7(9,#11,13)) joined into one: the labels next to never change so (11 of 98k
+    changes in the training songs), the frames do when they split one sound between its readings.  The joined segment
+    keeps the reading with the more probability over both segments' frames."""
+
+    from .theory import chord_tone_templates
+
+    tones = chord_tone_templates().astype(bool)
+
+    def notes(seg: Segment) -> set[int]:
+        return set(np.flatnonzero(tones[seg.detail]).tolist()) | {seg.bass}
+
+    def weight(seg: Segment, a: int, b: int) -> float:
+        quality, root = seg.detail // 12, seg.detail % 12
+        roots = equivalent_roots(int(QUALITY_FAMILY[quality]), root) if symmetric else [root]
+        return float(detail[a:b, [12 * quality + r for r in roots]].sum())
+
+    out: list[Segment] = []
+    for seg in segs:
+        prev = out[-1] if out else None
+        if (prev is not None and NO_CHORD not in (prev.detail, seg.detail) and prev.bass == seg.bass
+                and prev.detail % 12 != seg.detail % 12 and (notes(prev) <= notes(seg) or notes(seg) <= notes(prev))):  # fmt: skip
+            keep = prev if weight(prev, prev.start, seg.end) >= weight(seg, prev.start, seg.end) else seg
+            out[-1] = replace(keep, start=prev.start, end=seg.end)
+        else:
+            out.append(seg)
+    return out
+
+
+def merge_fifth_bass(segs: list[Segment], keep: str = "first") -> list[Segment]:
+    """A bass-only change between the chord's root and its fifth (B/F# -> B, C -> C/G) dropped: the bass going back and
+    forth between them is one chord in the labels (5 -> 1 is 43 of 98k labelled changes, 1 -> 5 fewer still), so the
+    segment keeps the bass it started with."""
+
+    out: list[Segment] = []
+    for seg in segs:
+        prev = out[-1] if out else None
+        if prev is not None and prev.detail == seg.detail and seg.detail < NO_CHORD:
+            root = seg.detail % 12
+            if {(prev.bass - root) % 12, (seg.bass - root) % 12} == {0, 7}:
+                bass = {"first": prev.bass, "longer": prev.bass if prev.end - prev.start >= seg.end - seg.start else seg.bass,
+                        "root": root}[keep]  # (checks)
+                out[-1] = replace(prev, end=seg.end, bass=bass)
+                continue
+        out.append(seg)
     return out

@@ -31,7 +31,7 @@ import numpy as np
 import torch
 
 from .chord_crf import N_STATE, NS, beat_position
-from .chords import family_probs
+from .chords import SYMMETRIC, family_probs, merge_symmetric
 
 FPS = 25
 DIVISIONS = (2, 3, 4)
@@ -42,6 +42,31 @@ DUR_EDGES = np.array([0.375, 0.625, 0.875, 1.25, 1.75, 2.5, 3.5, 5.0, 7.0, 10.0,
 DURATIONS = len(DUR_EDGES) + 1  # ~1/4, 1/2, 3/4, 1, 1.5, 2, 3, 4, 6, 8, 12, 16+ beats
 NEG = -1e9
 
+# Labelled chords of the training songs by family (``chords.FAMILIES`` order) and the bass's interval above the root
+# (1, b2, 2, b3, 3, 4, b5, 5, #5, 6, b7, 7): ``bass_prior``'s table when the model's ``semi_tables`` has none.
+BASS_INTERVAL_COUNTS = np.array([
+    (335, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),  # 5
+    (25657, 6, 1677, 3, 4376, 146, 3, 1351, 1, 8, 427, 28),  # major
+    (2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),  # -5
+    (6838, 3, 14, 410, 6, 119, 0, 214, 0, 10, 145, 11),  # m
+    (678, 0, 2, 40, 3, 0, 9, 2, 0, 4, 19, 0),  # dim
+    (1245, 0, 97, 10, 8, 0, 1326, 12, 0, 0, 14, 0),  # aug
+    (84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),  # sus2
+    (1707, 52, 50, 49, 15, 0, 1, 17, 28, 19, 47, 0),  # sus4
+    (972, 0, 2, 0, 13, 0, 0, 0, 0, 0, 0, 0),  # 6
+    (11967, 10, 7, 1, 626, 30, 2, 42, 0, 0, 612, 0),  # 7
+    (9541, 0, 632, 0, 25, 2, 0, 54, 0, 0, 0, 1),  # M7
+    (368, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 0),  # m6
+    (19973, 1, 6, 12, 1, 2091, 1, 44, 0, 0, 51, 4),  # m7
+    (405, 0, 34, 5, 0, 70, 0, 18, 0, 2, 0, 0),  # mM7
+    (215, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0),  # 7-5
+    (2122, 0, 2, 7, 0, 159, 105, 0, 0, 0, 24, 0),  # m7-5
+    (244, 0, 0, 0, 2, 0, 9, 0, 0, 0, 0, 0),  # aug7
+    (43, 0, 42, 0, 0, 0, 5, 0, 0, 0, 1, 0),  # augM7
+    (251, 0, 0, 0, 0, 5, 0, 3, 0, 0, 19, 0),  # 7sus4
+    (1268, 9, 0, 4, 6, 0, 0, 10, 0, 0, 0, 0),  # dim7
+], dtype=np.float64)  # fmt: skip
+
 
 @dataclass
 class Params:
@@ -49,6 +74,10 @@ class Params:
     penalty: float = 8.0
     bass_penalty: float = 2.0
     nct_penalty: float = 0.0  # extra cost of a bass-only change to a bass outside the held chord's family tones
+    bass_prior: float = 0.5  # weight of log P(bass interval | family) (over its likeliest interval) at every segment's start
+    symmetric: bool = True  # aug / dim7: the roots that spell one set of notes share their summed probability
+    merge_fifth_bass: bool | str = False  # (after the search, chords.merge_fifth_bass) root <-> fifth bass moves: one chord
+    merge_similar: bool = True  # (after the search, chords.merge_similar) one sound split between two readings: joined
     boundary_weight: float = 1.0
     lam: float = 0.0
     gamma_dur: float = 0.0
@@ -144,6 +173,8 @@ def decode(detail: np.ndarray, bass: np.ndarray, boundary: np.ndarray, tonic: np
 
     frames = len(detail)
     family = family_probs(detail)
+    if params.symmetric:
+        family = merge_symmetric(family)
     keep = np.nonzero(family.max(0) >= params.prune)[0]
     if params.extra.get("keep") is not None:  # (checks) given states
         keep = np.asarray(params.extra["keep"])
@@ -191,9 +222,17 @@ def decode(detail: np.ndarray, bass: np.ndarray, boundary: np.ndarray, tonic: np
         for idx, state in enumerate(keep[:-1]):
             q = int(np.flatnonzero(QUALITY_FAMILY == state // 12)[0])
             nct[idx] = params.nct_penalty * ~templ[12 * q + state % 12]
+    prior = np.zeros((K, 12))  # the chord-bass pair's prior, paid once per segment (not by a continuation)
+    if params.bass_prior:
+        for idx, state in enumerate(keep[:-1]):
+            fam, root = state // 12, state % 12
+            table = tables["bass_interval"][fam]
+            step = SYMMETRIC.get(fam)  # a symmetric chord: the bass's best reading over its spellings
+            rots = [0] if step is None else [k * step for k in range(12 // step)]
+            prior[idx] = params.bass_prior * np.max([np.roll(table, root + r) for r in rots], 0)
     out = _forward(CP, BP, SP[cand], g_chord, g_stay, u, pos_c, pos_b, dur_c, dur_b, DUR_EDGES, trans_all, tonic_idx,
                    float(params.penalty), float(params.bass_penalty), float(params.max_beats), float(params.long_beats),
-                   int(params.max_candidates), n_idx, nct)  # fmt: skip
+                   int(params.max_candidates), n_idx, nct, prior)  # fmt: skip
     end, bp_i, bp_type, end_long, bpl_i, bpl_type, prev_k, prev_kb, top1, top2 = out
     if params.extra.get("keep") is not None or params.extra.get("want_score"):
         params.extra["score"] = float(np.where(np.ones((K, 12), dtype=bool), end[M], NEG).max())
@@ -227,7 +266,7 @@ def decode(detail: np.ndarray, bass: np.ndarray, boundary: np.ndarray, tonic: np
 
 @numba.njit(cache=True)
 def _forward(CP, BP, SPc, g_chord, g_stay, u, pos_c, pos_b, dur_c, dur_b, edges, trans, tonic_idx, penalty, bass_penalty,
-             max_beats, long_beats, max_cand, n_idx, nct):  # fmt: skip
+             max_beats, long_beats, max_cand, n_idx, nct, prior):  # fmt: skip
     """The max-sum forward over candidates (see ``decode``); returns the ends' scores and the back pointers."""
 
     M = CP.shape[0] - 1
@@ -247,7 +286,7 @@ def _forward(CP, BP, SPc, g_chord, g_stay, u, pos_c, pos_b, dur_c, dur_b, edges,
     top2 = np.zeros((M + 1, K), dtype=np.int8)
     for k in range(K):
         for b in range(12 if k != n_idx else 1):
-            start_c[0, k, b] = g_chord[0]
+            start_c[0, k, b] = g_chord[0] + prior[k, b]
     best_k = np.empty(K)
     best_kb = np.empty(K, dtype=np.int64)
     for j in range(1, M + 1):
@@ -294,7 +333,7 @@ def _forward(CP, BP, SPc, g_chord, g_stay, u, pos_c, pos_b, dur_c, dur_b, edges,
             if k != n_idx:
                 for b in range(12):
                     other = m2 if b == mb else m
-                    start_b[j, k, b] = other - bass_penalty - nct[k, b] + pos_b[j] + g_stay[j]
+                    start_b[j, k, b] = other - bass_penalty - nct[k, b] + prior[k, b] + pos_b[j] + g_stay[j]
             for b in range(12 if k != n_idx else 1):
                 start_n[j, k, b] = end_long[j, k, b] + g_stay[j]
         tr = trans[tonic_idx[j]]
@@ -307,7 +346,7 @@ def _forward(CP, BP, SPc, g_chord, g_stay, u, pos_c, pos_b, dur_c, dur_b, edges,
             prev_k[j, k], prev_kb[j, k] = mk, best_kb[mk]
             sc = m - penalty + pos_c[j] + g_chord[j]
             for b in range(12 if k != n_idx else 1):
-                start_c[j, k, b] = sc
+                start_c[j, k, b] = sc + prior[k, b]
     return end, bp_i, bp_type, end_long, bpl_i, bpl_type, prev_k, prev_kb, top1, top2
 
 
@@ -385,7 +424,8 @@ def count_tables(songs: list[tuple[list, np.ndarray, np.ndarray, float]], family
 
 def tables_from_counts(counts: dict, off: float = -2.0) -> dict:
     """``dur_*``: log P(length bin), its best bin 0; ``pos_*``: log of the change rate at a position over the mean
-    rate (grid positions; off-grid starts get ``off``, unknown 0)."""
+    rate (grid positions; off-grid starts get ``off``, unknown 0); ``bass_interval``: log P(bass interval | family)
+    over the family's likeliest interval (``counts["bass_interval"]`` or ``BASS_INTERVAL_COUNTS``)."""
 
     out = {}
     for kind in ("chord", "bass"):
@@ -399,6 +439,9 @@ def tables_from_counts(counts: dict, off: float = -2.0) -> dict:
         pos = np.where(grid, np.log(rate / mean), off)
         pos[-1] = 0.0
         out[f"pos_{kind}"] = pos
+    c = np.asarray(counts.get("bass_interval", BASS_INTERVAL_COUNTS), dtype=np.float64)  # [families, 12]
+    lp = np.log((c + 20.0 * (c.sum(0) + 1.0) / (c.sum() + 12.0)) / (c.sum(1, keepdims=True) + 20.0))  # towards all families'
+    out["bass_interval"] = lp - lp.max(1, keepdims=True)
     return out
 
 
